@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meu Álbum Digital</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon.png">
+    <meta name="theme-color" content="#000000">
+</head>
+<body class="bg-gray-100 min-h-screen pb-10" x-data="app()">
+
+    <div class="max-w-md mx-auto bg-white shadow-lg min-h-screen pb-10">
+        <div class="bg-blue-600 p-6 text-white text-center">
+            <h1 class="text-2xl font-bold">Meu Álbum</h1>
+        </div>
+
+        <div x-show="isScanning" class="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center p-4">
+            <div id="reader" class="w-full max-w-sm bg-white rounded-lg overflow-hidden"></div>
+            <button @click="stopScanner()" class="mt-4 bg-red-600 text-white px-6 py-2 rounded-full font-bold">Cancelar Leitura</button>
+        </div>
+
+        <div class="p-4 space-y-4">
+            <div class="bg-gray-100 p-3 rounded border">
+                <p class="text-xs font-bold text-gray-500 mb-2 uppercase">Cadastrar nova figurinha</p>
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="text" x-model="novoNome" list="listaNomes" placeholder="Jogador" class="border p-2 rounded text-sm col-span-2">
+                    <input type="text" x-model="novoPais" list="listaPaises" placeholder="País" class="border p-2 rounded text-sm">
+                    <input type="text" x-model="novoDono" list="listaDonos" placeholder="Dono" class="border p-2 rounded text-sm">
+                </div>
+                
+                <datalist id="listaNomes"><template x-for="nome in nomesUnicos"><option :value="nome"></option></template></datalist>
+                <datalist id="listaPaises"><template x-for="pais in paisesUnicos"><option :value="pais"></option></template></datalist>
+                <datalist id="listaDonos"><template x-for="dono in donosUnicos"><option :value="dono"></option></template></datalist>
+
+                <div class="flex gap-2 mt-2">
+                    <button @click="cadastrar()" class="flex-1 bg-green-600 text-white p-2 rounded text-sm font-bold">Adicionar</button>
+                    <button @click="startScanner()" class="bg-gray-800 text-white px-4 rounded text-sm">📷 Scan</button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 text-sm">
+                <button @click="exportarAmigo()" class="bg-blue-500 text-white p-2 rounded">📤 Exportar Colega</button>
+                <label class="bg-purple-600 text-white p-2 rounded text-center cursor-pointer">
+                    📥 Importar Base
+                    <input type="file" @change="importar($event)" class="hidden" accept=".json">
+                </label>
+                <button @click="limparTudo()" class="bg-red-600 text-white p-2 rounded col-span-2">🗑️ Limpar Tudo</button>
+            </div>
+
+            <div class="space-y-2 bg-gray-50 p-2 rounded border">
+                <input type="text" x-model="filtroBusca" placeholder="🔍 Buscar Jogador ou País..." class="w-full border p-2 rounded text-sm">
+                <input type="text" x-model="filtroPessoa" placeholder="👤 Filtrar Dono..." class="w-full border p-2 rounded text-sm">
+            </div>
+
+            <div class="flex border-b text-xs">
+                <button @click="viewMode = 'todos'" :class="viewMode === 'todos' ? 'border-b-2 border-blue-600 font-bold' : ''" class="flex-1 py-2">Todas</button>
+                <button @click="viewMode = 'repetidas'" :class="viewMode === 'repetidas' ? 'border-b-2 border-red-600 font-bold' : ''" class="flex-1 py-2 text-red-600">Repetidas</button>
+                <button @click="viewMode = 'preciso'" :class="viewMode === 'preciso' ? 'border-b-2 border-orange-600 font-bold' : ''" class="flex-1 py-2 text-orange-600">Preciso</button>
+                <button @click="viewMode = 'match'" :class="viewMode === 'match' ? 'border-b-2 border-green-600 font-bold' : ''" class="flex-1 py-2 text-green-700">Oportunidades</button>
+            </div>
+
+            <ul class="space-y-2">
+                <template x-if="viewMode === 'match'">
+                    <template x-for="m in filteredMatches" :key="m.nome + m.quemTem + m.quemPrecisa">
+                        <li class="border-b p-3 bg-green-50 border-green-200">
+                            <p class="font-bold text-gray-800" x-text="m.nome + ' (' + m.pais + ')'"></p>
+                            <div class="flex flex-col gap-2 mt-2 text-xs">
+                                <div class="flex justify-between">
+                                    <span class="bg-green-200 px-2 py-1 rounded">✅ <b x-text="m.quemTem"></b> tem sobrando</span>
+                                    <span class="bg-red-200 px-2 py-1 rounded">❌ <b x-text="m.quemPrecisa"></b> precisa</span>
+                                </div>
+                                <button @click="adicionarOportunidade(m)" class="bg-blue-600 text-white py-2 rounded font-bold w-full">
+                                    Adicionar para <span x-text="m.quemPrecisa"></span>
+                                </button>
+                            </div>
+                        </li>
+                    </template>
+                </template>
+
+                <template x-if="viewMode !== 'match'">
+                    <template x-for="item in listaExibida" :key="item.id + item.dono">
+                        <li class="border-b p-3 flex justify-between items-center" :class="item.qtd === 0 ? 'bg-orange-50' : (item.qtd > 1 ? 'bg-green-50' : '')">
+                            <div>
+                                <p class="font-bold text-gray-800">
+                                    <span x-text="item.nome"></span>
+                                    <span x-show="viewMode === 'todos'" class="ml-2">
+                                        <button @click="editarItem(item)" class="text-gray-400 hover:text-blue-600">✏️</button>
+                                        <button @click="deletar(item)" class="text-gray-400 hover:text-red-600 ml-2">🗑️</button>
+                                    </span>
+                                </p>
+                                <p class="text-xs text-gray-500" x-text="item.pais + ' | Dono: ' + (item.dono || 'Sem Dono')"></p>
+                            </div>
+                            
+                            <div class="flex items-center gap-2" x-show="viewMode === 'todos'">
+                                <button @click="alterarQtd(item, -1)" class="bg-gray-200 px-3 py-1 rounded font-bold">-</button>
+                                <span class="font-bold text-lg w-8 text-center" x-text="item.qtd"></span>
+                                <button @click="alterarQtd(item, 1)" class="bg-blue-600 text-white px-3 py-1 rounded font-bold">+</button>
+                            </div>
+
+                            <div x-show="viewMode === 'repetidas'">
+                                <span class="font-bold text-lg text-green-700">Saldo: <span x-text="item.qtd - 1"></span></span>
+                            </div>
+                        </li>
+                    </template>
+                </template>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        function app() {
+            return {
+                figurinhas: JSON.parse(localStorage.getItem('figurinhas')) || [],
+                filtroBusca: '', filtroPessoa: '', viewMode: 'todos',
+                novoNome: '', novoPais: '', novoDono: '',
+                isScanning: false, html5QrCode: null,
+
+                get nomesUnicos() { return [...new Set(this.figurinhas.map(f => f.nome))].sort(); },
+                get paisesUnicos() { return [...new Set(this.figurinhas.map(f => f.pais))].sort(); },
+                get donosUnicos() { return [...new Set(this.figurinhas.map(f => f.dono))].sort(); },
+
+                adicionarOuAtualizar(nome, pais, dono) {
+                    const d = dono || 'Sem Dono';
+                    const existente = this.figurinhas.find(f => 
+                        f.nome.toLowerCase() === nome.toLowerCase() && 
+                        f.dono.toLowerCase() === d.toLowerCase()
+                    );
+                    if (existente) { existente.qtd++; } 
+                    else { this.figurinhas.push({ id: Date.now(), nome, pais, dono: d, qtd: 1 }); }
+                    this.salvar();
+                },
+
+                // Nova função para o botão de Oportunidades
+                adicionarOportunidade(m) {
+                    this.adicionarOuAtualizar(m.nome, m.pais, m.quemPrecisa);
+                    alert(`Figurinha ${m.nome} adicionada para ${m.quemPrecisa}!`);
+                },
+
+                cadastrar() {
+                    if(!this.novoNome || !this.novoPais) return alert("Preencha nome e país!");
+                    this.adicionarOuAtualizar(this.novoNome, this.novoPais, this.novoDono);
+                    this.novoNome = ''; this.novoPais = '';
+                    alert("Figurinha adicionada!");
+                },
+
+                startScanner() {
+                    this.isScanning = true;
+                    this.html5QrCode = new Html5Qrcode("reader");
+                    this.html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (text) => {
+                        const partes = text.split(';');
+                        if(partes.length >= 2) {
+                            this.adicionarOuAtualizar(partes[0], partes[1], this.novoDono);
+                            this.stopScanner();
+                        } else alert("Formato QR: Nome;País");
+                    }).catch(err => { alert("Erro câmera: " + err); this.isScanning = false; });
+                },
+
+                stopScanner() { if (this.html5QrCode) this.html5QrCode.stop().then(() => { this.isScanning = false; }); },
+                salvar() { localStorage.setItem('figurinhas', JSON.stringify(this.figurinhas)); },
+                alterarQtd(item, delta) { item.qtd = Math.max(0, item.qtd + delta); this.salvar(); },
+                deletar(item) { if(confirm("Excluir?")) { this.figurinhas = this.figurinhas.filter(f => f.id !== item.id); this.salvar(); } },
+                editarItem(item) {
+                    const novoNome = prompt("Editar Nome:", item.nome);
+                    const novoPais = prompt("Editar País:", item.pais);
+                    const novoDono = prompt("Editar Dono:", item.dono);
+                    if (novoNome !== null) { item.nome = novoNome; item.pais = novoPais; item.dono = novoDono || 'Sem Dono'; this.salvar(); }
+                },
+                importar(event) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            const novas = JSON.parse(e.target.result);
+                            const donoDoArquivo = novas[0].dono.trim();
+                            let lista = this.figurinhas.filter(f => f.dono.trim().toLowerCase() !== donoDoArquivo.toLowerCase());
+                            lista.push(...novas.map(i => ({...i, dono: donoDoArquivo})));
+                            this.figurinhas = lista;
+                            this.salvar();
+                            alert("Importado com sucesso!");
+                        } catch(err) { alert("Erro ao importar."); }
+                    };
+                    reader.readAsText(event.target.files[0]);
+                },
+                exportarAmigo() {
+                    const nome = prompt("Nome do colega?");
+                    if (!nome) return;
+                    
+                    const existe = this.figurinhas.some(f => f.dono.toLowerCase() === nome.toLowerCase());
+                    if (!existe) {
+                        alert("Este dono não foi encontrado na base.");
+                        return;
+                    }
+
+                    const dados = this.figurinhas.filter(f => f.dono.toLowerCase() === nome.toLowerCase());
+                    const blob = new Blob([JSON.stringify(dados)], {type: "application/json"});
+                    const dataHoje = new Date().toISOString().slice(0, 10);
+                    
+                    const a = document.createElement('a'); 
+                    a.href = URL.createObjectURL(blob); 
+                    a.download = `Figurinhas_${nome}_${dataHoje}.json`; 
+                    a.click();
+                },
+                limparTudo() { if (confirm("Apagar tudo?")) { this.figurinhas = []; this.salvar(); } },
+                get filteredMatches() {
+                    let matches = [];
+                    const nomes = [...new Set(this.figurinhas.map(f => f.nome))];
+                    const donos = [...new Set(this.figurinhas.map(f => f.dono))];
+                    nomes.forEach(nome => {
+                        const regs = this.figurinhas.filter(f => f.nome === nome);
+                        const quemTem = regs.filter(f => f.qtd > 1);
+                        quemTem.forEach(a => {
+                            donos.forEach(d => {
+                                if (d === a.dono) return;
+                                if (!regs.find(f => f.dono === d) || regs.find(f => f.dono === d).qtd === 0) 
+                                    matches.push({ nome: nome, pais: a.pais, quemTem: a.dono, quemPrecisa: d });
+                            });
+                        });
+                    });
+                    return matches.filter(m => (m.nome.toLowerCase().includes(this.filtroBusca.toLowerCase()) || m.pais.toLowerCase().includes(this.filtroBusca.toLowerCase())) && (m.quemTem.toLowerCase().includes(this.filtroPessoa.toLowerCase()) || m.quemPrecisa.toLowerCase().includes(this.filtroPessoa.toLowerCase())));
+                },
+                get listaExibida() {
+                    return this.figurinhas.filter(f => {
+                        const matchesSearch = (f.nome.toLowerCase().includes(this.filtroBusca.toLowerCase()) || f.pais.toLowerCase().includes(this.filtroBusca.toLowerCase())) && (f.dono.toLowerCase().includes(this.filtroPessoa.toLowerCase()));
+                        
+                        if (this.viewMode === 'todos') return matchesSearch;
+                        if (this.viewMode === 'repetidas') return matchesSearch && f.qtd > 1;
+                        if (this.viewMode === 'preciso') return matchesSearch && f.qtd === 0;
+                        return matchesSearch;
+                    });
+                }
+            }
+        }
+    </script>
+</body>
+</html>
