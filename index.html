@@ -11,6 +11,16 @@
 </head>
 <body class="bg-gray-100 min-h-screen pb-10" x-data="app()">
 
+    <div x-show="modal.show" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50" x-cloak>
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm">
+            <p class="text-gray-800 mb-6 font-medium" x-text="modal.message"></p>
+            <div class="flex justify-end gap-3">
+                <button @click="modal.show = false" class="px-4 py-2 bg-gray-200 rounded">Cancelar</button>
+                <button @click="modal.confirmAction(); modal.show = false" class="px-4 py-2 bg-blue-600 text-white rounded">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
     <div class="max-w-md mx-auto bg-white shadow-lg min-h-screen pb-10">
         <div class="bg-blue-600 p-6 text-white text-center">
             <h1 class="text-2xl font-bold">Meu Álbum</h1>
@@ -25,7 +35,7 @@
             <div class="bg-gray-100 p-3 rounded border">
                 <p class="text-xs font-bold text-gray-500 mb-2 uppercase">Cadastrar nova figurinha</p>
                 <div class="grid grid-cols-2 gap-2">
-                    <input type="text" x-model="novoCodigo" @input="buscarPorCodigo()" placeholder="Código (ex: ALG-10)" class="border p-2 rounded text-sm col-span-2 uppercase">
+                    <input type="text" x-model="novoCodigo" @input="buscarPorCodigo()" placeholder="Código (ex: BRA-10)" class="border p-2 rounded text-sm col-span-2 uppercase">
                     <input type="text" x-model="novoNome" list="listaNomes" placeholder="Jogador" class="border p-2 rounded text-sm col-span-2">
                     <input type="text" x-model="novoPais" list="listaPaises" placeholder="País" class="border p-2 rounded text-sm">
                     <input type="text" x-model="novoDono" list="listaDonos" placeholder="Dono" class="border p-2 rounded text-sm">
@@ -70,7 +80,10 @@
 
             <div class="space-y-2 bg-gray-50 p-2 rounded border">
                 <input type="text" x-model="filtroBusca" placeholder="🔍 Buscar Jogador, Código ou País..." class="w-full border p-2 rounded text-sm">
-                <input type="text" x-model="filtroPessoa" placeholder="👤 Filtrar Dono..." class="w-full border p-2 rounded text-sm">
+                <input type="text" x-model="filtroPessoa" list="listaDonosFiltro" placeholder="👤 Filtrar Dono..." class="w-full border p-2 rounded text-sm">
+                <datalist id="listaDonosFiltro">
+                    <template x-for="dono in donosUnicos"><option :value="dono"></option></template>
+                </datalist>
             </div>
 
             <div class="flex border-b text-xs">
@@ -108,18 +121,19 @@
                                 <p class="font-bold text-gray-800">
                                     <span x-show="item.codigo" class="text-blue-600 mr-1" x-text="item.codigo + ' - '"></span>
                                     <span x-text="item.nome"></span>
-                                    <span x-show="viewMode === 'todos'" class="ml-2">
-                                        <button @click="editarItem(item)" class="text-gray-400 hover:text-blue-600">✏️</button>
-                                        <button @click="deletar(item)" class="text-gray-400 hover:text-red-600 ml-2">🗑️</button>
-                                    </span>
                                 </p>
                                 <p class="text-xs text-gray-500" x-text="item.pais + ' | Dono: ' + (item.dono || 'Sem Dono')"></p>
+                                
+                                <div x-show="viewMode === 'todos'" class="mt-2">
+                                    <button @click="editarItem(item)" class="text-blue-600 text-xs font-bold">✏️ Editar</button>
+                                    <button @click="deletar(item)" class="text-red-600 text-xs font-bold ml-3">🗑️ Excluir</button>
+                                </div>
                             </div>
                             
                             <div class="flex items-center gap-2" x-show="viewMode === 'todos'">
-                                <button @click="alterarQtd(item, -1)" class="bg-gray-200 px-3 py-1 rounded font-bold hover:bg-gray-300">-</button>
+                                <button @click="confirmarQtd(item, -1)" class="bg-gray-200 px-3 py-1 rounded font-bold hover:bg-gray-300">-</button>
                                 <span class="font-bold text-lg w-8 text-center" x-text="item.qtd"></span>
-                                <button @click="alterarQtd(item, 1)" class="bg-blue-600 text-white px-3 py-1 rounded font-bold hover:bg-blue-700">+</button>
+                                <button @click="confirmarQtd(item, 1)" class="bg-blue-600 text-white px-3 py-1 rounded font-bold hover:bg-blue-700">+</button>
                             </div>
 
                             <div x-show="viewMode === 'repetidas'">
@@ -1123,7 +1137,10 @@
                 filtroBusca: '', filtroPessoa: '', viewMode: 'todos',
                 novoCodigo: '', novoNome: '', novoPais: '', novoDono: '',
                 isScanning: false, html5QrCode: null,
+                modal: { show: false, message: '', confirmAction: null },
 
+                showModal(msg, action) { this.modal = { show: true, message: msg, confirmAction: action }; },
+                
                 get nomesUnicos() { return [...new Set(this.figurinhas.map(f => f.nome))].sort(); },
                 get paisesUnicos() { return [...new Set(this.figurinhas.map(f => f.pais))].sort(); },
                 get donosUnicos() { return [...new Set(this.figurinhas.map(f => f.dono))].sort(); },
@@ -1131,41 +1148,31 @@
                 get progressoDonos() {
                     const totalDatabase = Object.keys(databaseCodigos).length;
                     if (totalDatabase === 0) return [];
-
                     const donosValidos = this.donosUnicos.filter(d => d && d !== 'Sem Dono');
-
                     return donosValidos.map(dono => {
                         const figurinhasDoDono = this.figurinhas.filter(f => f.dono.toLowerCase() === dono.toLowerCase() && f.qtd > 0);
                         const codigosAdquiridos = new Set();
-                        
                         figurinhasDoDono.forEach(f => {
                             const cod = f.codigo ? f.codigo.toUpperCase() : '';
-                            if (databaseCodigos[cod]) {
-                                codigosAdquiridos.add(cod);
-                            } else {
+                            if (databaseCodigos[cod]) codigosAdquiridos.add(cod);
+                            else {
                                 const foundCod = Object.keys(databaseCodigos).find(k => databaseCodigos[k].nome.toLowerCase() === f.nome.trim().toLowerCase());
                                 if (foundCod) codigosAdquiridos.add(foundCod);
                             }
                         });
-                        
-                        const qtdObtidas = codigosAdquiridos.size;
-                        const pct = Math.round((qtdObtidas / totalDatabase) * 100);
-
-                        return { dono, obtidas: qtdObtidas, total: totalDatabase, pct };
+                        return { dono, obtidas: codigosAdquiridos.size, total: totalDatabase, pct: Math.round((codigosAdquiridos.size / totalDatabase) * 100) };
                     });
                 },
 
                 gerarPDF() {
                     const nome = prompt("Qual o dono para gerar o relatório PDF?");
                     if (!nome) return;
-                    
                     const nomeReal = this.donosUnicos.find(d => d.toLowerCase() === nome.toLowerCase());
-                    if (!nomeReal) { alert("Dono não encontrado."); return; }
+                    if (!nomeReal) { this.showModal("Dono não encontrado.", () => {}); return; }
                     
                     const totalDatabase = Object.keys(databaseCodigos).length;
                     const figurinhasDoDono = this.figurinhas.filter(f => f.dono.toLowerCase() === nomeReal.toLowerCase() && f.qtd > 0);
                     const codigosAdquiridos = new Set();
-                    
                     figurinhasDoDono.forEach(f => {
                         const cod = f.codigo ? f.codigo.toUpperCase() : '';
                         if (databaseCodigos[cod]) codigosAdquiridos.add(cod);
@@ -1191,193 +1198,85 @@
                     containerPdf.style.padding = '20px';
                     containerPdf.style.fontFamily = 'Arial, sans-serif';
 
-                    let htmlPdf = `
-                        <div style="text-align: center; margin-bottom: 20px;">
-                            <h1 style="color: #2563eb;">Relatório de ${nomeReal}</h1>
-                            <p>Total: ${totalObtidas}/${totalDatabase}</p>
-                        </div>
-                    `;
-
+                    let htmlPdf = `<div style="text-align: center; margin-bottom: 20px;"><h1 style="color: #2563eb;">Relatório de ${nomeReal}</h1><p>Total: ${totalObtidas}/${totalDatabase}</p></div>`;
                     Object.keys(dadosAgrupados).sort().forEach(pais => {
                         const g = dadosAgrupados[pais];
-                        htmlPdf += `
-                            <div style="margin-bottom: 20px;">
-                                <h2 style="background: #f3f4f6; padding: 10px; border-left: 5px solid #2563eb; font-size: 16px;">
-                                    ${pais} (${g.obtidas}/${g.total})
-                                </h2>
-                                <div style="display: flex; flex-wrap: wrap; width: 100%;">
-                        `;
+                        htmlPdf += `<div style="margin-bottom: 20px;"><h2 style="background: #f3f4f6; padding: 10px; border-left: 5px solid #2563eb; font-size: 16px;">${pais} (${g.obtidas}/${g.total})</h2><div style="display: flex; flex-wrap: wrap; width: 100%;">`;
                         g.lista.forEach(item => {
-                            htmlPdf += `
-                                <div style="width: 50%; padding: 8px; border-bottom: 1px solid #eee; font-size: 12px; box-sizing: border-box; ${item.tem ? '' : 'color: #888;'}">
-                                    ${item.tem ? '✅' : '❗'} <b>${item.codigo}</b> | ${item.nome}
-                                </div>
-                            `;
+                            htmlPdf += `<div style="width: 50%; padding: 8px; border-bottom: 1px solid #eee; font-size: 12px; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid; ${item.tem ? '' : 'color: #888;'}">${item.tem ? '✅' : '❗'} <b>${item.codigo}</b> | ${item.nome}</div>`;
                         });
                         htmlPdf += `</div></div>`;
                     });
-
                     containerPdf.innerHTML = htmlPdf;
-
-                    html2pdf().set({
-                        margin: 10,
-                        filename: `Relatorio_${nomeReal}.pdf`,
-                        image: { type: 'jpeg', quality: 1 },
-                        html2canvas: { scale: 2, useCORS: true },
-                        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-                    }).from(containerPdf).save();
+                    html2pdf().set({ margin: 10, filename: `Relatorio_${nomeReal}.pdf`, image: { type: 'jpeg', quality: 1 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(containerPdf).save();
                 },
 
-                buscarPorCodigo() {
-                    if(!this.novoCodigo) return;
-                    const cod = this.novoCodigo.trim().toUpperCase();
-                    if (databaseCodigos[cod]) {
-                        this.novoNome = databaseCodigos[cod].nome;
-                        this.novoPais = databaseCodigos[cod].pais;
-                    }
-                },
-
-                adicionarOuAtualizar(codigo, nome, pais, dono) {
-                    const d = dono || 'Sem Dono';
-                    const existente = this.figurinhas.find(f => 
-                        f.nome.toLowerCase() === nome.toLowerCase() && 
-                        f.dono.toLowerCase() === d.toLowerCase()
-                    );
-                    
-                    if (existente) { 
-                        existente.qtd++; 
-                        if (codigo && !existente.codigo) existente.codigo = codigo.toUpperCase();
-                    } else { 
-                        this.figurinhas.push({ 
-                            id: Date.now(), 
-                            codigo: codigo ? codigo.toUpperCase() : '', 
-                            nome, 
-                            pais, 
-                            dono: d, 
-                            qtd: 1 
-                        }); 
-                    }
-                    this.salvar();
-                },
-
-                adicionarOportunidade(m) {
-                    const existente = this.figurinhas.find(f => 
-                        f.nome.toLowerCase() === m.nome.toLowerCase() && 
-                        f.dono.toLowerCase() === m.quemPrecisa.toLowerCase()
-                    );
-
-                    if (existente) {
-                        existente.qtd++;
-                        if (m.codigo && !existente.codigo) existente.codigo = m.codigo.toUpperCase();
-                    } else {
-                        this.figurinhas.push({ 
-                            id: Date.now(), 
-                            codigo: m.codigo ? m.codigo.toUpperCase() : '', 
-                            nome: m.nome, 
-                            pais: m.pais, 
-                            dono: m.quemPrecisa, 
-                            qtd: 1 
-                        });
-                    }
-
-                    const doador = this.figurinhas.find(f => 
-                        f.nome.toLowerCase() === m.nome.toLowerCase() && 
-                        f.dono.toLowerCase() === m.quemTem.toLowerCase()
-                    );
-                    
-                    if (doador && doador.qtd > 1) {
-                        doador.qtd--;
-                    }
-
-                    this.salvar();
-                    alert(`Sucesso! A figurinha ${m.nome} foi transferida de ${m.quemTem} para ${m.quemPrecisa}!`);
-                },
-
-                cadastrar() {
-                    if(!this.novoCodigo?.trim() || !this.novoNome?.trim() || !this.novoPais?.trim() || !this.novoDono?.trim()) {
-                        return alert("Atenção: Por favor, preencha todos os campos (Código, Jogador, País e Dono) antes de adicionar!");
-                    }
-                    this.adicionarOuAtualizar(this.novoCodigo, this.novoNome, this.novoPais, this.novoDono);
-                    this.novoCodigo = ''; this.novoNome = ''; this.novoPais = '';
-                    alert("Figurinha adicionada com sucesso!");
-                },
-
-                startScanner() {
-                    this.isScanning = true;
-                    this.html5QrCode = new Html5Qrcode("reader");
-                    this.html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (text) => {
-                        const partes = text.split(';');
-                        if(partes.length >= 2) {
-                            let cod = '', nome = '', pais = '';
-                            if (partes.length === 3) {
-                                cod = partes[0]; nome = partes[1]; pais = partes[2];
-                            } else {
-                                nome = partes[0]; pais = partes[1];
+                listaExibida() {
+                    if (this.viewMode === 'preciso') {
+                        const donoAtivo = this.filtroPessoa.toLowerCase() || (this.donosUnicos.length > 0 ? this.donosUnicos[0].toLowerCase() : '');
+                        if (!donoAtivo) return [];
+                        const figurinhasDoDono = this.figurinhas.filter(f => f.dono.toLowerCase() === donoAtivo);
+                        let listaPreciso = [];
+                        Object.keys(databaseCodigos).forEach(cod => {
+                            const info = databaseCodigos[cod];
+                            const possui = figurinhasDoDono.find(f => (f.codigo === cod || f.nome.toLowerCase() === info.nome.toLowerCase()) && f.qtd > 0);
+                            if (!possui) {
+                                listaPreciso.push({ id: 'virtual-' + cod, codigo: cod, nome: info.nome, pais: info.pais, dono: donoAtivo, qtd: 0 });
                             }
-                            this.adicionarOuAtualizar(cod, nome, pais, this.novoDono);
-                            this.stopScanner();
-                        } else alert("Formato QR inválido");
-                    }).catch(err => { alert("Erro câmera: " + err); this.isScanning = false; });
+                        });
+                        return listaPreciso.filter(f => (f.codigo.toLowerCase().includes(this.filtroBusca.toLowerCase()) || f.nome.toLowerCase().includes(this.filtroBusca.toLowerCase()) || f.pais.toLowerCase().includes(this.filtroBusca.toLowerCase())));
+                    }
+                    return this.figurinhas.filter(f => {
+                        const matchesSearch = ((f.codigo && f.codigo.toLowerCase().includes(this.filtroBusca.toLowerCase())) || f.nome.toLowerCase().includes(this.filtroBusca.toLowerCase()) || f.pais.toLowerCase().includes(this.filtroBusca.toLowerCase())) && (f.dono.toLowerCase().includes(this.filtroPessoa.toLowerCase()));
+                        if (this.viewMode === 'todos') return matchesSearch;
+                        if (this.viewMode === 'repetidas') return matchesSearch && f.qtd > 1;
+                        return matchesSearch;
+                    });
                 },
 
+                buscarPorCodigo() { if(!this.novoCodigo) return; const cod = this.novoCodigo.trim().toUpperCase(); if (databaseCodigos[cod]) { this.novoNome = databaseCodigos[cod].nome; this.novoPais = databaseCodigos[cod].pais; } },
+                adicionarOuAtualizar(codigo, nome, pais, dono) { const d = dono || 'Sem Dono'; const existente = this.figurinhas.find(f => f.nome.toLowerCase() === nome.toLowerCase() && f.dono.toLowerCase() === d.toLowerCase()); if (existente) { existente.qtd++; if (codigo && !existente.codigo) existente.codigo = codigo.toUpperCase(); } else { this.figurinhas.push({ id: Date.now(), codigo: codigo ? codigo.toUpperCase() : '', nome, pais, dono: d, qtd: 1 }); } this.salvar(); },
+                adicionarOportunidade(m) { const existente = this.figurinhas.find(f => f.nome.toLowerCase() === m.nome.toLowerCase() && f.dono.toLowerCase() === m.quemPrecisa.toLowerCase()); if (existente) { existente.qtd++; if (m.codigo && !existente.codigo) existente.codigo = m.codigo.toUpperCase(); } else { this.figurinhas.push({ id: Date.now(), codigo: m.codigo ? m.codigo.toUpperCase() : '', nome: m.nome, pais: m.pais, dono: m.quemPrecisa, qtd: 1 }); } const doador = this.figurinhas.find(f => f.nome.toLowerCase() === m.nome.toLowerCase() && f.dono.toLowerCase() === m.quemTem.toLowerCase()); if (doador && doador.qtd > 1) { doador.qtd--; } this.salvar(); this.showModal(`Sucesso! ${m.nome} transferida de ${m.quemTem} para ${m.quemPrecisa}!`, () => {}); },
+                cadastrar() { if(!this.novoCodigo?.trim() || !this.novoNome?.trim() || !this.novoPais?.trim() || !this.novoDono?.trim()) { this.showModal("Atenção: Preencha todos os campos!", () => {}); return; } this.adicionarOuAtualizar(this.novoCodigo, this.novoNome, this.novoPais, this.novoDono); this.novoCodigo = ''; this.novoNome = ''; this.novoPais = ''; this.showModal("Sucesso!", () => {}); },
+                startScanner() { this.isScanning = true; this.html5QrCode = new Html5Qrcode("reader"); this.html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (text) => { const partes = text.split(';'); if(partes.length >= 2) { let cod = '', nome = '', pais = ''; if (partes.length === 3) { cod = partes[0]; nome = partes[1]; pais = partes[2]; } else { nome = partes[0]; pais = partes[1]; } this.adicionarOuAtualizar(cod, nome, pais, this.novoDono); this.stopScanner(); } else this.showModal("QR inválido", () => {}); }).catch(err => { this.showModal("Erro: " + err, () => {}); this.isScanning = false; }); },
                 stopScanner() { if (this.html5QrCode) this.html5QrCode.stop().then(() => { this.isScanning = false; }); },
                 salvar() { localStorage.setItem('figurinhas', JSON.stringify(this.figurinhas)); },
-                alterarQtd(item, delta) { item.qtd = Math.max(0, item.qtd + delta); this.salvar(); },
-                deletar(item) { if(confirm("Excluir?")) { this.figurinhas = this.figurinhas.filter(f => f.id !== item.id); this.salvar(); } },
                 
+                // Mudança 2: Confirmação de Qtd
+                confirmarQtd(item, delta) {
+                    const operacao = delta > 0 ? "adicionar" : "remover";
+                    this.showModal(`Deseja ${operacao} uma unidade de ${item.nome}?`, () => {
+                        item.qtd = Math.max(0, item.qtd + delta);
+                        this.salvar();
+                    });
+                },
+
+                deletar(item) { this.showModal("Tem certeza que deseja excluir esta figurinha?", () => { this.figurinhas = this.figurinhas.filter(f => f.id !== item.id); this.salvar(); }); },
                 editarItem(item) {
                     const novoCodigo = prompt("Editar Código:", item.codigo || '');
                     if (novoCodigo === null) return;
-                    const novoNome = prompt("Editar Nome:", item.nome);
-                    if (novoNome === null) return;
-                    const novoPais = prompt("Editar País:", item.pais);
-                    if (novoPais === null) return;
-                    const novoDono = prompt("Editar Dono:", item.dono);
-                    if (novoDono === null) return;
-                    
-                    item.codigo = novoCodigo.toUpperCase();
-                    item.nome = novoNome; 
-                    item.pais = novoPais; 
-                    item.dono = novoDono || 'Sem Dono'; 
+                    let novoNome = item.nome;
+                    let novoPais = item.pais;
+                    const codUpper = novoCodigo.toUpperCase();
+                    if (databaseCodigos[codUpper]) {
+                        novoNome = databaseCodigos[codUpper].nome;
+                        novoPais = databaseCodigos[codUpper].pais;
+                    } else {
+                        novoNome = prompt("Código não encontrado na base. Edite o Nome:", item.nome) || item.nome;
+                        novoPais = prompt("Edite o País:", item.pais) || item.pais;
+                    }
+                    const novoDono = prompt("Editar Dono:", item.dono) || item.dono;
+                    const jaExiste = this.figurinhas.some(f => f.dono.toLowerCase() === novoDono.toLowerCase() && f.nome.toLowerCase() === novoNome.toLowerCase() && f.id !== item.id);
+                    if (jaExiste) { this.showModal("Erro: Esta figurinha já existe para este dono!", () => {}); return; }
+                    item.codigo = codUpper;
+                    item.nome = novoNome;
+                    item.pais = novoPais;
+                    item.dono = novoDono || 'Sem Dono';
                     this.salvar();
                 },
-
-                importar(event) {
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        try {
-                            const novas = JSON.parse(e.target.result);
-                            const donoDoArquivo = novas[0].dono.trim();
-                            let lista = this.figurinhas.filter(f => f.dono.trim().toLowerCase() !== donoDoArquivo.toLowerCase());
-                            lista.push(...novas.map(i => ({...i, dono: donoDoArquivo})));
-                            this.figurinhas = lista;
-                            this.salvar();
-                            alert("Importado com sucesso!");
-                        } catch(err) { alert("Erro ao importar."); }
-                    };
-                    reader.readAsText(event.target.files[0]);
-                },
-
-                exportarAmigo() {
-                    const nome = prompt("Nome do colega?");
-                    if (!nome) return;
-                    
-                    const existe = this.figurinhas.some(f => f.dono.toLowerCase() === nome.toLowerCase());
-                    if (!existe) {
-                        alert("Este dono não foi encontrado na base.");
-                        return;
-                    }
-
-                    const dados = this.figurinhas.filter(f => f.dono.toLowerCase() === nome.toLowerCase());
-                    const blob = new Blob([JSON.stringify(dados)], {type: "application/json"});
-                    const dataHoje = new Date().toISOString().slice(0, 10);
-                    
-                    const a = document.createElement('a'); 
-                    a.href = URL.createObjectURL(blob); 
-                    a.download = `Figurinhas_${nome}_${dataHoje}.json`; 
-                    a.click();
-                },
-                limparTudo() { if (confirm("Apagar tudo?")) { this.figurinhas = []; this.salvar(); } },
+                importar(event) { const reader = new FileReader(); reader.onload = (e) => { try { const novas = JSON.parse(e.target.result); const donoDoArquivo = novas[0].dono.trim(); let lista = this.figurinhas.filter(f => f.dono.trim().toLowerCase() !== donoDoArquivo.toLowerCase()); lista.push(...novas.map(i => ({...i, dono: donoDoArquivo}))); this.figurinhas = lista; this.salvar(); this.showModal("Importado com sucesso!", () => {}); } catch(err) { this.showModal("Erro ao importar.", () => {}); } }; reader.readAsText(event.target.files[0]); },
+                exportarAmigo() { const nome = prompt("Nome do colega?"); if (!nome) return; const existe = this.figurinhas.some(f => f.dono.toLowerCase() === nome.toLowerCase()); if (!existe) { this.showModal("Dono não encontrado.", () => {}); return; } const dados = this.figurinhas.filter(f => f.dono.toLowerCase() === nome.toLowerCase()); const blob = new Blob([JSON.stringify(dados)], {type: "application/json"}); const dataHoje = new Date().toISOString().slice(0, 10); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `Figurinhas_${nome}_${dataHoje}.json`; a.click(); },
+                limparTudo() { this.showModal("Tem certeza que deseja apagar tudo?", () => { this.figurinhas = []; this.salvar(); }); },
                 
                 get filteredMatches() {
                     let matches = [];
@@ -1399,21 +1298,6 @@
                         m.nome.toLowerCase().includes(this.filtroBusca.toLowerCase()) || 
                         m.pais.toLowerCase().includes(this.filtroBusca.toLowerCase())
                     ) && (m.quemTem.toLowerCase().includes(this.filtroPessoa.toLowerCase()) || m.quemPrecisa.toLowerCase().includes(this.filtroPessoa.toLowerCase())));
-                },
-                
-                get listaExibida() {
-                    return this.figurinhas.filter(f => {
-                        const matchesSearch = (
-                            (f.codigo && f.codigo.toLowerCase().includes(this.filtroBusca.toLowerCase())) ||
-                            f.nome.toLowerCase().includes(this.filtroBusca.toLowerCase()) || 
-                            f.pais.toLowerCase().includes(this.filtroBusca.toLowerCase())
-                        ) && (f.dono.toLowerCase().includes(this.filtroPessoa.toLowerCase()));
-                        
-                        if (this.viewMode === 'todos') return matchesSearch;
-                        if (this.viewMode === 'repetidas') return matchesSearch && f.qtd > 1;
-                        if (this.viewMode === 'preciso') return matchesSearch && f.qtd === 0;
-                        return matchesSearch;
-                    });
                 }
             }
         }
