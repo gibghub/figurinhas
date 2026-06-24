@@ -1235,9 +1235,25 @@
                 },
 
                 buscarPorCodigo() { if(!this.novoCodigo) return; const cod = this.novoCodigo.trim().toUpperCase(); if (databaseCodigos[cod]) { this.novoNome = databaseCodigos[cod].nome; this.novoPais = databaseCodigos[cod].pais; } },
-                adicionarOuAtualizar(codigo, nome, pais, dono) { const d = dono || 'Sem Dono'; const existente = this.figurinhas.find(f => f.nome.toLowerCase() === nome.toLowerCase() && f.dono.toLowerCase() === d.toLowerCase()); if (existente) { existente.qtd++; if (codigo && !existente.codigo) existente.codigo = codigo.toUpperCase(); } else { this.figurinhas.push({ id: Date.now(), codigo: codigo ? codigo.toUpperCase() : '', nome, pais, dono: d, qtd: 1 }); } this.salvar(); },
+                adicionarOuAtualizar(codigo, nome, pais, dono) { 
+                    const d = dono || 'Sem Dono'; 
+                    const existente = this.figurinhas.find(f => f.nome.toLowerCase() === nome.toLowerCase() && f.dono.toLowerCase() === d.toLowerCase()); 
+                
+                    if (existente) {
+                        this.showModal(`Você já possui ${existente.qtd} unidade(s) de "${existente.nome}". Deseja adicionar mais uma (totalizando ${existente.qtd + 1})?`, () => {
+                            existente.qtd++;
+                            if (codigo && !existente.codigo) existente.codigo = codigo.toUpperCase();
+                            this.salvar();
+                            this.showModal("Sucesso! Unidade adicionada.", () => {}); // Sucesso apenas aqui
+                        });
+                    } else { 
+                        this.figurinhas.push({ id: Date.now(), codigo: codigo ? codigo.toUpperCase() : '', nome, pais, dono: d, qtd: 1 }); 
+                        this.salvar();
+                        this.showModal("Sucesso! Nova figurinha cadastrada.", () => {}); // Sucesso apenas aqui
+                    } 
+                },
                 adicionarOportunidade(m) { const existente = this.figurinhas.find(f => f.nome.toLowerCase() === m.nome.toLowerCase() && f.dono.toLowerCase() === m.quemPrecisa.toLowerCase()); if (existente) { existente.qtd++; if (m.codigo && !existente.codigo) existente.codigo = m.codigo.toUpperCase(); } else { this.figurinhas.push({ id: Date.now(), codigo: m.codigo ? m.codigo.toUpperCase() : '', nome: m.nome, pais: m.pais, dono: m.quemPrecisa, qtd: 1 }); } const doador = this.figurinhas.find(f => f.nome.toLowerCase() === m.nome.toLowerCase() && f.dono.toLowerCase() === m.quemTem.toLowerCase()); if (doador && doador.qtd > 1) { doador.qtd--; } this.salvar(); this.showModal(`Sucesso! ${m.nome} transferida de ${m.quemTem} para ${m.quemPrecisa}!`, () => {}); },
-                cadastrar() { if(!this.novoCodigo?.trim() || !this.novoNome?.trim() || !this.novoPais?.trim() || !this.novoDono?.trim()) { this.showModal("Atenção: Preencha todos os campos!", () => {}); return; } this.adicionarOuAtualizar(this.novoCodigo, this.novoNome, this.novoPais, this.novoDono); this.novoCodigo = ''; this.novoNome = ''; this.novoPais = ''; this.showModal("Sucesso!", () => {}); },
+                cadastrar() { if(!this.novoCodigo?.trim() || !this.novoNome?.trim() || !this.novoPais?.trim() || !this.novoDono?.trim()) { this.showModal("Atenção: Preencha todos os campos!", () => {}); return; } this.adicionarOuAtualizar(this.novoCodigo, this.novoNome, this.novoPais, this.novoDono); this.novoCodigo = ''; this.novoNome = ''; this.novoPais = ''; },
                 startScanner() { this.isScanning = true; this.html5QrCode = new Html5Qrcode("reader"); this.html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (text) => { const partes = text.split(';'); if(partes.length >= 2) { let cod = '', nome = '', pais = ''; if (partes.length === 3) { cod = partes[0]; nome = partes[1]; pais = partes[2]; } else { nome = partes[0]; pais = partes[1]; } this.adicionarOuAtualizar(cod, nome, pais, this.novoDono); this.stopScanner(); } else this.showModal("QR inválido", () => {}); }).catch(err => { this.showModal("Erro: " + err, () => {}); this.isScanning = false; }); },
                 stopScanner() { if (this.html5QrCode) this.html5QrCode.stop().then(() => { this.isScanning = false; }); },
                 salvar() { localStorage.setItem('figurinhas', JSON.stringify(this.figurinhas)); },
