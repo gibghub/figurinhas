@@ -1165,50 +1165,118 @@
                 },
 
                 gerarPDF() {
+                    // 1. Verificação de segurança da biblioteca
+                    if (typeof html2pdf === 'undefined') {
+                        alert("Erro: A biblioteca html2pdf não foi carregada. Verifique sua conexão.");
+                        return;
+                    }
+                
+                    // 2. Coleta de dados
                     const nome = prompt("Qual o dono para gerar o relatório PDF?");
                     if (!nome) return;
+                
                     const nomeReal = this.donosUnicos.find(d => d.toLowerCase() === nome.toLowerCase());
-                    if (!nomeReal) { this.showModal("Dono não encontrado.", () => {}); return; }
-                    
-                    const totalDatabase = Object.keys(databaseCodigos).length;
-                    const figurinhasDoDono = this.figurinhas.filter(f => f.dono.toLowerCase() === nomeReal.toLowerCase() && f.qtd > 0);
-                    const codigosAdquiridos = new Set();
+                    if (!nomeReal) {
+                        alert("Dono não encontrado.");
+                        return;
+                    }
+                
+                    // 3. Escolha do tipo de relatório
+                    const ehCompleto = confirm("Clique em OK para Relatório COMPLETO.\nClique em CANCELAR para gerar apenas o Relatório de REPETIDAS.");
+                
+                    // 4. Filtragem e Mapeamento
+                    const figurinhasDoDono = this.figurinhas.filter(f => f.dono.toLowerCase() === nomeReal.toLowerCase());
+                    const mapaFigurinhas = {};
+                
                     figurinhasDoDono.forEach(f => {
                         const cod = f.codigo ? f.codigo.toUpperCase() : '';
-                        if (databaseCodigos[cod]) codigosAdquiridos.add(cod);
-                        else {
+                        const qtd = f.qtd || 1;
+                        if (databaseCodigos[cod]) {
+                            mapaFigurinhas[cod] = (mapaFigurinhas[cod] || 0) + qtd;
+                        } else {
                             const foundCod = Object.keys(databaseCodigos).find(k => databaseCodigos[k].nome.toLowerCase() === f.nome.trim().toLowerCase());
-                            if (foundCod) codigosAdquiridos.add(foundCod);
+                            if (foundCod) mapaFigurinhas[foundCod] = (mapaFigurinhas[foundCod] || 0) + qtd;
                         }
                     });
-
+                
+                    // 5. Agrupamento para exibição
                     const dadosAgrupados = {};
-                    let totalObtidas = 0;
+                    let temItens = false;
+                
                     Object.keys(databaseCodigos).forEach(codigo => {
                         const info = databaseCodigos[codigo];
-                        const tem = codigosAdquiridos.has(codigo);
-                        if(tem) totalObtidas++;
+                        const qtd = mapaFigurinhas[codigo] || 0;
+                
+                        // Regra de filtro
+                        if (!ehCompleto && qtd <= 1) return;
+                
+                        temItens = true;
                         if (!dadosAgrupados[info.pais]) dadosAgrupados[info.pais] = { total: 0, obtidas: 0, lista: [] };
                         dadosAgrupados[info.pais].total++;
-                        if (tem) dadosAgrupados[info.pais].obtidas++;
-                        dadosAgrupados[info.pais].lista.push({ codigo, nome: info.nome, tem });
+                        if (qtd > 0) dadosAgrupados[info.pais].obtidas++;
+                        dadosAgrupados[info.pais].lista.push({ codigo, nome: info.nome, qtd });
                     });
-
+                
+                    if (!temItens) {
+                        alert("Nenhum item encontrado para este relatório.");
+                        return;
+                    }
+                
+                    // 6. Construção do HTML
                     const containerPdf = document.createElement('div');
                     containerPdf.style.padding = '20px';
                     containerPdf.style.fontFamily = 'Arial, sans-serif';
-
-                    let htmlPdf = `<div style="text-align: center; margin-bottom: 20px;"><h1 style="color: #2563eb;">Relatório de ${nomeReal}</h1><p>Total: ${totalObtidas}/${totalDatabase}</p></div>`;
+                
+                    let htmlPdf = `<h1 style="text-align: center; color: #2563eb;">Relatório de ${nomeReal} (${ehCompleto ? 'Completo' : 'Repetidas'})</h1>`;
+                
+                    let contador = 0; // Contador para controlar a quebra de página
+                
                     Object.keys(dadosAgrupados).sort().forEach(pais => {
+                        // Lógica de quebra de página: insere quebra a cada 2 países
+                        if (contador > 0 && contador % 2 === 0) {
+                            htmlPdf += '<div style="page-break-after: always;"></div>';
+                        }
+                        contador++;
+                
                         const g = dadosAgrupados[pais];
-                        htmlPdf += `<div style="margin-bottom: 20px;"><h2 style="background: #f3f4f6; padding: 10px; border-left: 5px solid #2563eb; font-size: 16px;">${pais} (${g.obtidas}/${g.total})</h2><div style="display: flex; flex-wrap: wrap; width: 100%;">`;
+                        
+                        // page-break-inside: avoid tenta manter o bloco do país unido
+                        htmlPdf += `<div style="margin-bottom: 20px; page-break-inside: avoid;">
+                            <h2 style="background: #f3f4f6; padding: 10px; border-left: 5px solid #2563eb; font-size: 16px;">${pais} (${g.obtidas}/${g.total})</h2>
+                            <div style="display: flex; flex-wrap: wrap; width: 100%;">`;
+                
                         g.lista.forEach(item => {
-                            htmlPdf += `<div style="width: 50%; padding: 8px; border-bottom: 1px solid #eee; font-size: 12px; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid; ${item.tem ? '' : 'color: #888;'}">${item.tem ? '✅' : '❗'} <b>${item.codigo}</b> | ${item.nome}</div>`;
+                            let simbolo = '';
+                            let extra = '';
+                
+                            if (ehCompleto) {
+                                // Relatório Completo: ✅ se tem, ❗ se não tem
+                                simbolo = item.qtd > 0 ? '✅' : '❗';
+                                extra = item.qtd > 1 ? ` (Qtd: ${item.qtd})` : '';
+                            } else {
+                                // Relatório Repetidas: 🔁
+                                simbolo = '🔁';
+                                extra = ` (Qtd: ${item.qtd})`;
+                            }
+                
+                            htmlPdf += `<div style="width: 50%; padding: 8px; border-bottom: 1px solid #eee; font-size: 12px; box-sizing: border-box;">${simbolo} <b>${item.codigo}</b> | ${item.nome}${extra}</div>`;
                         });
+                
                         htmlPdf += `</div></div>`;
                     });
+                
                     containerPdf.innerHTML = htmlPdf;
-                    html2pdf().set({ margin: 10, filename: `Relatorio_${nomeReal}.pdf`, image: { type: 'jpeg', quality: 1 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(containerPdf).save();
+                
+                    // 7. Geração do PDF
+                    alert("Gerando PDF... aguarde.");
+                    
+                    html2pdf().set({
+                        margin: 10,
+                        filename: `Relatorio_${ehCompleto ? 'Completo' : 'Repetidas'}_${nomeReal}.pdf`,
+                        image: { type: 'jpeg', quality: 1 },
+                        html2canvas: { scale: 2, useCORS: true },
+                        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                    }).from(containerPdf).save();
                 },
 
                 listaExibida() {
