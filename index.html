@@ -1165,118 +1165,50 @@
                 },
 
                 gerarPDF() {
-                    // 1. Verificação de segurança da biblioteca
-                    if (typeof html2pdf === 'undefined') {
-                        alert("Erro: A biblioteca html2pdf não foi carregada. Verifique sua conexão.");
-                        return;
-                    }
-                
-                    // 2. Coleta de dados
                     const nome = prompt("Qual o dono para gerar o relatório PDF?");
                     if (!nome) return;
-                
                     const nomeReal = this.donosUnicos.find(d => d.toLowerCase() === nome.toLowerCase());
-                    if (!nomeReal) {
-                        alert("Dono não encontrado.");
-                        return;
-                    }
-                
-                    // 3. Escolha do tipo de relatório
-                    const ehCompleto = confirm("Clique em OK para Relatório COMPLETO.\nClique em CANCELAR para gerar apenas o Relatório de REPETIDAS.");
-                
-                    // 4. Filtragem e Mapeamento
-                    const figurinhasDoDono = this.figurinhas.filter(f => f.dono.toLowerCase() === nomeReal.toLowerCase());
-                    const mapaFigurinhas = {};
-                
+                    if (!nomeReal) { this.showModal("Dono não encontrado.", () => {}); return; }
+                    
+                    const totalDatabase = Object.keys(databaseCodigos).length;
+                    const figurinhasDoDono = this.figurinhas.filter(f => f.dono.toLowerCase() === nomeReal.toLowerCase() && f.qtd > 0);
+                    const codigosAdquiridos = new Set();
                     figurinhasDoDono.forEach(f => {
                         const cod = f.codigo ? f.codigo.toUpperCase() : '';
-                        const qtd = f.qtd || 1;
-                        if (databaseCodigos[cod]) {
-                            mapaFigurinhas[cod] = (mapaFigurinhas[cod] || 0) + qtd;
-                        } else {
+                        if (databaseCodigos[cod]) codigosAdquiridos.add(cod);
+                        else {
                             const foundCod = Object.keys(databaseCodigos).find(k => databaseCodigos[k].nome.toLowerCase() === f.nome.trim().toLowerCase());
-                            if (foundCod) mapaFigurinhas[foundCod] = (mapaFigurinhas[foundCod] || 0) + qtd;
+                            if (foundCod) codigosAdquiridos.add(foundCod);
                         }
                     });
-                
-                    // 5. Agrupamento para exibição
+
                     const dadosAgrupados = {};
-                    let temItens = false;
-                
+                    let totalObtidas = 0;
                     Object.keys(databaseCodigos).forEach(codigo => {
                         const info = databaseCodigos[codigo];
-                        const qtd = mapaFigurinhas[codigo] || 0;
-                
-                        // Regra de filtro
-                        if (!ehCompleto && qtd <= 1) return;
-                
-                        temItens = true;
+                        const tem = codigosAdquiridos.has(codigo);
+                        if(tem) totalObtidas++;
                         if (!dadosAgrupados[info.pais]) dadosAgrupados[info.pais] = { total: 0, obtidas: 0, lista: [] };
                         dadosAgrupados[info.pais].total++;
-                        if (qtd > 0) dadosAgrupados[info.pais].obtidas++;
-                        dadosAgrupados[info.pais].lista.push({ codigo, nome: info.nome, qtd });
+                        if (tem) dadosAgrupados[info.pais].obtidas++;
+                        dadosAgrupados[info.pais].lista.push({ codigo, nome: info.nome, tem });
                     });
-                
-                    if (!temItens) {
-                        alert("Nenhum item encontrado para este relatório.");
-                        return;
-                    }
-                
-                    // 6. Construção do HTML
+
                     const containerPdf = document.createElement('div');
                     containerPdf.style.padding = '20px';
                     containerPdf.style.fontFamily = 'Arial, sans-serif';
-                
-                    let htmlPdf = `<h1 style="text-align: center; color: #2563eb;">Relatório de ${nomeReal} (${ehCompleto ? 'Completo' : 'Repetidas'})</h1>`;
-                
-                    let contador = 0; // Contador para controlar a quebra de página
-                
+
+                    let htmlPdf = `<div style="text-align: center; margin-bottom: 20px;"><h1 style="color: #2563eb;">Relatório de ${nomeReal}</h1><p>Total: ${totalObtidas}/${totalDatabase}</p></div>`;
                     Object.keys(dadosAgrupados).sort().forEach(pais => {
-                        // Lógica de quebra de página: insere quebra a cada 2 países
-                        if (contador > 0 && contador % 2 === 0) {
-                            htmlPdf += '<div style="page-break-after: always;"></div>';
-                        }
-                        contador++;
-                
                         const g = dadosAgrupados[pais];
-                        
-                        // page-break-inside: avoid tenta manter o bloco do país unido
-                        htmlPdf += `<div style="margin-bottom: 20px; page-break-inside: avoid;">
-                            <h2 style="background: #f3f4f6; padding: 10px; border-left: 5px solid #2563eb; font-size: 16px;">${pais} (${g.obtidas}/${g.total})</h2>
-                            <div style="display: flex; flex-wrap: wrap; width: 100%;">`;
-                
+                        htmlPdf += `<div style="margin-bottom: 20px;"><h2 style="background: #f3f4f6; padding: 10px; border-left: 5px solid #2563eb; font-size: 16px;">${pais} (${g.obtidas}/${g.total})</h2><div style="display: flex; flex-wrap: wrap; width: 100%;">`;
                         g.lista.forEach(item => {
-                            let simbolo = '';
-                            let extra = '';
-                
-                            if (ehCompleto) {
-                                // Relatório Completo: ✅ se tem, ❗ se não tem
-                                simbolo = item.qtd > 0 ? '✅' : '❗';
-                                extra = item.qtd > 1 ? ` (Qtd: ${item.qtd})` : '';
-                            } else {
-                                // Relatório Repetidas: 🔁
-                                simbolo = '🔁';
-                                extra = ` (Qtd: ${item.qtd})`;
-                            }
-                
-                            htmlPdf += `<div style="width: 50%; padding: 8px; border-bottom: 1px solid #eee; font-size: 12px; box-sizing: border-box;">${simbolo} <b>${item.codigo}</b> | ${item.nome}${extra}</div>`;
+                            htmlPdf += `<div style="width: 50%; padding: 8px; border-bottom: 1px solid #eee; font-size: 12px; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid; ${item.tem ? '' : 'color: #888;'}">${item.tem ? '✅' : '❗'} <b>${item.codigo}</b> | ${item.nome}</div>`;
                         });
-                
                         htmlPdf += `</div></div>`;
                     });
-                
                     containerPdf.innerHTML = htmlPdf;
-                
-                    // 7. Geração do PDF
-                    alert("Gerando PDF... aguarde.");
-                    
-                    html2pdf().set({
-                        margin: 10,
-                        filename: `Relatorio_${ehCompleto ? 'Completo' : 'Repetidas'}_${nomeReal}.pdf`,
-                        image: { type: 'jpeg', quality: 1 },
-                        html2canvas: { scale: 2, useCORS: true },
-                        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-                    }).from(containerPdf).save();
+                    html2pdf().set({ margin: 10, filename: `Relatorio_${nomeReal}.pdf`, image: { type: 'jpeg', quality: 1 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(containerPdf).save();
                 },
 
                 listaExibida() {
@@ -1303,25 +1235,9 @@
                 },
 
                 buscarPorCodigo() { if(!this.novoCodigo) return; const cod = this.novoCodigo.trim().toUpperCase(); if (databaseCodigos[cod]) { this.novoNome = databaseCodigos[cod].nome; this.novoPais = databaseCodigos[cod].pais; } },
-                adicionarOuAtualizar(codigo, nome, pais, dono) { 
-                    const d = dono || 'Sem Dono'; 
-                    const existente = this.figurinhas.find(f => f.nome.toLowerCase() === nome.toLowerCase() && f.dono.toLowerCase() === d.toLowerCase()); 
-                
-                    if (existente) {
-                        this.showModal(`Você já possui ${existente.qtd} unidade(s) de "${existente.nome}". Deseja adicionar mais uma (totalizando ${existente.qtd + 1})?`, () => {
-                            existente.qtd++;
-                            if (codigo && !existente.codigo) existente.codigo = codigo.toUpperCase();
-                            this.salvar();
-                            this.showModal("Sucesso! Unidade adicionada.", () => {}); // Sucesso apenas aqui
-                        });
-                    } else { 
-                        this.figurinhas.push({ id: Date.now(), codigo: codigo ? codigo.toUpperCase() : '', nome, pais, dono: d, qtd: 1 }); 
-                        this.salvar();
-                        this.showModal("Sucesso! Nova figurinha cadastrada.", () => {}); // Sucesso apenas aqui
-                    } 
-                },
+                adicionarOuAtualizar(codigo, nome, pais, dono) { const d = dono || 'Sem Dono'; const existente = this.figurinhas.find(f => f.nome.toLowerCase() === nome.toLowerCase() && f.dono.toLowerCase() === d.toLowerCase()); if (existente) { existente.qtd++; if (codigo && !existente.codigo) existente.codigo = codigo.toUpperCase(); } else { this.figurinhas.push({ id: Date.now(), codigo: codigo ? codigo.toUpperCase() : '', nome, pais, dono: d, qtd: 1 }); } this.salvar(); },
                 adicionarOportunidade(m) { const existente = this.figurinhas.find(f => f.nome.toLowerCase() === m.nome.toLowerCase() && f.dono.toLowerCase() === m.quemPrecisa.toLowerCase()); if (existente) { existente.qtd++; if (m.codigo && !existente.codigo) existente.codigo = m.codigo.toUpperCase(); } else { this.figurinhas.push({ id: Date.now(), codigo: m.codigo ? m.codigo.toUpperCase() : '', nome: m.nome, pais: m.pais, dono: m.quemPrecisa, qtd: 1 }); } const doador = this.figurinhas.find(f => f.nome.toLowerCase() === m.nome.toLowerCase() && f.dono.toLowerCase() === m.quemTem.toLowerCase()); if (doador && doador.qtd > 1) { doador.qtd--; } this.salvar(); this.showModal(`Sucesso! ${m.nome} transferida de ${m.quemTem} para ${m.quemPrecisa}!`, () => {}); },
-                cadastrar() { if(!this.novoCodigo?.trim() || !this.novoNome?.trim() || !this.novoPais?.trim() || !this.novoDono?.trim()) { this.showModal("Atenção: Preencha todos os campos!", () => {}); return; } this.adicionarOuAtualizar(this.novoCodigo, this.novoNome, this.novoPais, this.novoDono); this.novoCodigo = ''; this.novoNome = ''; this.novoPais = ''; },
+                cadastrar() { if(!this.novoCodigo?.trim() || !this.novoNome?.trim() || !this.novoPais?.trim() || !this.novoDono?.trim()) { this.showModal("Atenção: Preencha todos os campos!", () => {}); return; } this.adicionarOuAtualizar(this.novoCodigo, this.novoNome, this.novoPais, this.novoDono); this.novoCodigo = ''; this.novoNome = ''; this.novoPais = ''; this.showModal("Sucesso!", () => {}); },
                 startScanner() { this.isScanning = true; this.html5QrCode = new Html5Qrcode("reader"); this.html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (text) => { const partes = text.split(';'); if(partes.length >= 2) { let cod = '', nome = '', pais = ''; if (partes.length === 3) { cod = partes[0]; nome = partes[1]; pais = partes[2]; } else { nome = partes[0]; pais = partes[1]; } this.adicionarOuAtualizar(cod, nome, pais, this.novoDono); this.stopScanner(); } else this.showModal("QR inválido", () => {}); }).catch(err => { this.showModal("Erro: " + err, () => {}); this.isScanning = false; }); },
                 stopScanner() { if (this.html5QrCode) this.html5QrCode.stop().then(() => { this.isScanning = false; }); },
                 salvar() { localStorage.setItem('figurinhas', JSON.stringify(this.figurinhas)); },
