@@ -1192,17 +1192,17 @@
                 
                     const figurinhasDoDono = this.figurinhas.filter(f => f.dono.toLowerCase() === dono.toLowerCase());
                     
-                    // Preparar lista de precisadas
+                    // Lista de precisadas com 🔍
                     let preciso = [];
                     Object.keys(databaseCodigos).forEach(cod => {
                         const possui = figurinhasDoDono.find(f => (f.codigo === cod || f.nome.toLowerCase() === databaseCodigos[cod].nome.toLowerCase()) && f.qtd > 0);
-                        if (!possui) preciso.push(`${cod} - ${databaseCodigos[cod].nome}`);
+                        if (!possui) preciso.push(`🔍 ${cod} - ${databaseCodigos[cod].nome}`);
                     });
                 
-                    // Preparar lista de repetidas
+                    // Lista de repetidas com ⚽
                     let repetidas = figurinhasDoDono
                         .filter(f => f.qtd > 1)
-                        .map(f => `${f.codigo || ''} ${f.nome} (${f.qtd - 1} extra)`);
+                        .map(f => `⚽ ${f.codigo || ''} ${f.nome} (x${f.qtd - 1})`);
                 
                     // --- LÓGICA DO FILTRO ---
                     let texto = `📋 *Álbum de ${dono} (${this.viewMode.toUpperCase()})*\n\n`;
@@ -1217,16 +1217,16 @@
                     
                     if (this.viewMode === 'match') {
                         texto += `🤝 *Oportunidades encontradas:*\n`;
+                        // Lista de matchs com 🔄
                         texto += this.filteredMatches.length > 0 
-                            ? this.filteredMatches.map(m => `${m.codigo} ${m.nome} (com ${m.quemTem})`).join('\n') 
+                            ? this.filteredMatches.map(m => `🔄 ${m.codigo || ''} ${m.nome} (Com ${m.quemTem})`).join('\n') 
                             : 'Nenhuma no momento.';
                     }
                 
-                    // Copiar para área de transferência
                     navigator.clipboard.writeText(texto).then(() => {
-                        this.showModal("Copiado com sucesso! Agora é só colar.", () => {});
+                        this.showModal("Copiado com os ícones! Pronto para colar.", () => {});
                     }).catch(err => {
-                        this.showModal("Erro ao copiar. Tente selecionar manualmente.", () => {});
+                        this.showModal("Erro ao copiar.", () => {});
                     });
                 },
                 
