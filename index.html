@@ -76,6 +76,7 @@
                 </label>
                 <button @click="gerarPDF()" class="bg-rose-600 hover:bg-rose-700 text-white p-2 rounded font-bold shadow-sm transition">📄 Exportar Relatório PDF</button>
                 <button @click="limparTudo()" class="bg-red-600 text-white p-2 rounded">🗑️ Limpar Tudo</button>
+                <button @click="copiarParaWhatsApp()" class="bg-green-500 text-white p-2 rounded font-bold col-span-2">💬 Copiar para WhatsApp</button>
             </div>
 
             <div class="space-y-2 bg-gray-50 p-2 rounded border">
@@ -1180,6 +1181,53 @@
                         // Se não tiver números, apenas transforma em maiúsculo
                         this.novoCodigo = valor.toUpperCase();
                     }
+                },
+
+                copiarParaWhatsApp() {
+                    const dono = this.filtroPessoa || (this.donosUnicos.length > 0 ? this.donosUnicos[0] : '');
+                    if (!dono) {
+                        this.showModal("Selecione um dono no filtro primeiro!", () => {});
+                        return;
+                    }
+                
+                    const figurinhasDoDono = this.figurinhas.filter(f => f.dono.toLowerCase() === dono.toLowerCase());
+                    
+                    // Preparar lista de precisadas
+                    let preciso = [];
+                    Object.keys(databaseCodigos).forEach(cod => {
+                        const possui = figurinhasDoDono.find(f => (f.codigo === cod || f.nome.toLowerCase() === databaseCodigos[cod].nome.toLowerCase()) && f.qtd > 0);
+                        if (!possui) preciso.push(`${cod} - ${databaseCodigos[cod].nome}`);
+                    });
+                
+                    // Preparar lista de repetidas
+                    let repetidas = figurinhasDoDono
+                        .filter(f => f.qtd > 1)
+                        .map(f => `${f.codigo || ''} ${f.nome} (${f.qtd - 1} extra)`);
+                
+                    // --- LÓGICA DO FILTRO ---
+                    let texto = `📋 *Álbum de ${dono} (${this.viewMode.toUpperCase()})*\n\n`;
+                
+                    if (this.viewMode === 'todos' || this.viewMode === 'preciso') {
+                        texto += `❌ *Preciso de:*\n${preciso.length > 0 ? preciso.join('\n') : 'Nenhuma (Álbum completo!)'}\n\n`;
+                    }
+                
+                    if (this.viewMode === 'todos' || this.viewMode === 'repetidas') {
+                        texto += `✅ *Tenho sobrando:*\n${repetidas.length > 0 ? repetidas.join('\n') : 'Nenhuma por enquanto.'}\n\n`;
+                    }
+                    
+                    if (this.viewMode === 'match') {
+                        texto += `🤝 *Oportunidades encontradas:*\n`;
+                        texto += this.filteredMatches.length > 0 
+                            ? this.filteredMatches.map(m => `${m.codigo} ${m.nome} (com ${m.quemTem})`).join('\n') 
+                            : 'Nenhuma no momento.';
+                    }
+                
+                    // Copiar para área de transferência
+                    navigator.clipboard.writeText(texto).then(() => {
+                        this.showModal("Copiado com sucesso! Agora é só colar.", () => {});
+                    }).catch(err => {
+                        this.showModal("Erro ao copiar. Tente selecionar manualmente.", () => {});
+                    });
                 },
                 
                 gerarPDF() {
