@@ -35,7 +35,7 @@
             <div class="bg-gray-100 p-3 rounded border">
                 <p class="text-xs font-bold text-gray-500 mb-2 uppercase">Cadastrar nova figurinha</p>
                 <div class="grid grid-cols-2 gap-2">
-                    <input type="text" x-model="novoCodigo" @input="buscarPorCodigo()" placeholder="Código (ex: BRA-10)" class="border p-2 rounded text-sm col-span-2 uppercase">
+                    <input type="text" x-model="novoCodigo" @input="formatarCodigo(); buscarPorCodigo()" placeholder="Código (Ex.: BRA10)" class="border p-2 rounded text-sm col-span-2 uppercase">
                     <input type="text" x-model="novoNome" list="listaNomes" placeholder="Jogador" class="border p-2 rounded text-sm col-span-2">
                     <input type="text" x-model="novoPais" list="listaPaises" placeholder="País" class="border p-2 rounded text-sm">
                     <input type="text" x-model="novoDono" list="listaDonos" placeholder="Dono" class="border p-2 rounded text-sm">
@@ -1164,6 +1164,24 @@
                     });
                 },
 
+                formatarCodigo() {
+                    // Remove tudo que não é letra ou número
+                    let valor = this.novoCodigo.replace(/[^a-zA-Z0-9]/g, '');
+                    
+                    // Procura o índice do primeiro número encontrado
+                    const indicePrimeiroNumero = valor.search(/\d/);
+                
+                    if (indicePrimeiroNumero > 0) {
+                        // Se encontrou número, divide a string e coloca o traço
+                        const letras = valor.substring(0, indicePrimeiroNumero);
+                        const numeros = valor.substring(indicePrimeiroNumero);
+                        this.novoCodigo = (letras + '-' + numeros).toUpperCase();
+                    } else {
+                        // Se não tiver números, apenas transforma em maiúsculo
+                        this.novoCodigo = valor.toUpperCase();
+                    }
+                },
+                
                 gerarPDF() {
                     const nome = prompt("Qual o dono para gerar o relatório PDF?");
                     if (!nome) return;
